@@ -435,7 +435,9 @@ async function loadAll(){
   }
 }
 
+let pausePoll=false;
 async function upsertRow(key,data){
+  pausePoll=true;
   try{
     await dbFetch("visitas?chave=eq."+encodeURIComponent(key),{
       method:"DELETE",headers:{"Content-Type":"application/json"}
@@ -443,15 +445,22 @@ async function upsertRow(key,data){
   }catch(e){}
   try{
     await dbFetch("visitas",{method:"POST",body:JSON.stringify({chave:key,...data})});
+    // Atualiza o DB local imediatamente para evitar sobrescrita pelo poll
+    if(!DB[key])DB[key]={};
+    Object.assign(DB[key],data);
+    lastHash="";  // Força atualização no próximo poll
     showToast();
   }catch(e){
     console.error("Erro ao salvar:",e);
   }
+  // Pausa o poll por 5 segundos após salvar
+  setTimeout(()=>{pausePoll=false;},5000);
 }
 
 // ── POLLING (atualização em tempo real) ──────────────────────────────────────
 let lastHash="";
 async function pollUpdates(){
+  if(pausePoll)return;
   try{
     const rows=await dbFetch("visitas?select=*");
     const hash=JSON.stringify(rows);
