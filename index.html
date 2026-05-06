@@ -459,7 +459,30 @@ async function pollUpdates(){
       lastHash=hash;
       DB={};
       (rows||[]).forEach(r=>{DB[r.chave]={status:r.status,dir:r.dir,motivo:r.motivo,detalhe:r.detalhe,nova_data:r.nova_data};});
-      renderTable();updateAll();applyFilter();
+      // Atualiza apenas as linhas existentes sem rerenderizar a tabela inteira
+      document.querySelectorAll("tbody tr[data-key]").forEach(row=>{
+        const key=row.dataset.key;
+        const mi=parseInt(key.split("__")[0]);
+        const newStatus=computeStatus(key,mi);
+        const newDir=getDir(key);
+        row.dataset.status=newStatus;
+        // Só atualiza o select de status se não estiver em foco
+        const statusSel=row.querySelector(".status-sel");
+        if(statusSel && document.activeElement!==statusSel){
+          statusSel.value=newStatus;
+          statusSel.className=`status-sel s-${newStatus.toLowerCase()}`;
+        }
+        // Só atualiza o select de diretor se não estiver em foco
+        const dirSel=row.querySelector(".dir-sel");
+        if(dirSel && document.activeElement!==dirSel){
+          dirSel.value=newDir;
+        }
+        // Atualiza classe da linha
+        if(document.activeElement!==statusSel){
+          row.className=newStatus==="Atrasada"?"atrasada-row":newStatus==="Reagendada"?"reagendada-row":newStatus==="Realizada"?"realizada-row":"";
+        }
+      });
+      updateAll();applyFilter();
       document.getElementById("syncDot").classList.remove("off");
     }
   }catch(e){document.getElementById("syncDot").classList.add("off");}
@@ -684,7 +707,7 @@ async function init(){
   document.getElementById("loadingOverlay").classList.add("hide");
   renderTable();updateAll();applyFilter();
   // Polling a cada 8 segundos para sincronizar entre usuários
-  setInterval(pollUpdates,8000);
+  setInterval(pollUpdates,3000);
 }
 init();
 </script>
