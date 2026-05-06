@@ -562,6 +562,15 @@ function renderTable(){
   tbody.innerHTML=html;
 }
 
+function getFullRow(key){
+  return {
+    status:DB[key]?.status||"Pendente",
+    dir:DB[key]?.dir||"A definir",
+    motivo:DB[key]?.motivo||"",
+    detalhe:DB[key]?.detalhe||"",
+    nova_data:DB[key]?.nova_data||""
+  };
+}
 function onStatusChange(key,sel,mi,clientName){
   const val=sel.value;
   if(val==="Reagendada"){
@@ -580,14 +589,14 @@ function onStatusChange(key,sel,mi,clientName){
   row.className=val==="Atrasada"?"atrasada-row":val==="Realizada"?"realizada-row":val==="Reagendada"?"reagendada-row":"";
   if(!DB[key])DB[key]={};
   DB[key].status=val;
-  upsertRow(key,{status:val,dir:DB[key].dir||"A definir",motivo:DB[key].motivo||"",detalhe:DB[key].detalhe||"",nova_data:DB[key].nova_data||""});
+  upsertRow(key,getFullRow(key));
   updateAll();applyFilter();
 }
 
 function onDirChange(key,sel){
   if(!DB[key])DB[key]={};
   DB[key].dir=sel.value;
-  upsertRow(key,{status:DB[key].status||"Pendente",dir:sel.value,motivo:DB[key].motivo||"",detalhe:DB[key].detalhe||"",nova_data:DB[key].nova_data||""});
+  upsertRow(key,getFullRow(key));
 }
 
 function closeModal(){
@@ -607,12 +616,14 @@ async function confirmarReagendamento(){
   const novaData=document.getElementById("novaData").value;
   const novoDiretor=document.getElementById("novoDiretor").value;
   if(!DB[pendingKey])DB[pendingKey]={};
+  if(!DB[pendingKey])DB[pendingKey]={};
   DB[pendingKey].status="Reagendada";
   DB[pendingKey].motivo=motivo;
   DB[pendingKey].detalhe=detalhe;
   DB[pendingKey].nova_data=novaData;
   if(novoDiretor)DB[pendingKey].dir=novoDiretor;
-  await upsertRow(pendingKey,{status:"Reagendada",dir:DB[pendingKey].dir||"A definir",motivo,detalhe,nova_data:novaData});
+  const fullR=getFullRow(pendingKey);
+  await upsertRow(pendingKey,fullR);
   document.getElementById("modalOverlay").classList.add("hide");
   renderTable();updateAll();applyFilter();
   pendingKey=pendingSel=pendingMi=null;
