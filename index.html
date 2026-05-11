@@ -788,7 +788,7 @@ function renderTable(){
     }
     // Botão limpar — aparece se tem qualquer dado salvo além do padrão
     const hasData=DB[key]&&(DB[key].status&&DB[key].status!=="Pendente"||DB[key].dir&&DB[key].dir!=="A definir"||DB[key].motivo||DB[key].data_real||DB[key].obs);
-    const clearBtn=hasData?`<button class="clear-btn" data-clearkey="${key}" title="Limpar todos os dados deste registro">✕ limpar</button>`:""`;
+    const clearBtn=hasData?`<button class="clear-btn" data-clearkey="${key}" title="Limpar todos os dados deste registro">✕ limpar</button>`:"";
     // Data real de realização — botão que abre calendário popup
     const dataReal=DB[key]?.data_real||"";
     let dataRealFmt="";
@@ -798,18 +798,22 @@ function renderTable(){
       :`<span style="color:var(--ink3);font-size:11px">—</span>`;
     // Observação
     const obs=DB[key]?.obs||"";
+    const badgeResp=e.c.r==="Angela"?"b-angela":"b-marcia";
+    const badgeFreq=e.c.f==="Trimestral"?"b-trim":"b-sem";
+    const freqLabel=e.c.f==="Trimestral"?"Trim.":"Sem.";
+    const clientSafe=e.c.n.replace(/'/g,"\\'");
     html+=`<tr data-key="${key}" data-resp="${e.c.r}" data-status="${status}" data-q="${mo.q}" class="${rowCls}">
       <td class="client-name">${e.c.n}</td>
-      <td><span class="badge ${e.c.r==="Angela"?"b-angela":"b-marcia"}">${e.c.r}</span></td>
-      <td><span class="badge ${e.c.f==="Trimestral"?"b-trim":"b-sem"}">${e.c.f==="Trimestral"?"Trim.":"Sem."}</span></td>
+      <td><span class="badge ${badgeResp}">${e.c.r}</span></td>
+      <td><span class="badge ${badgeFreq}">${freqLabel}</span></td>
       <td style="font-size:12px;color:var(--ink3)">${mo.q}</td>
       <td style="font-family:'DM Mono',monospace;font-size:12px">${mo.lbl}${novaData}</td>
-      <td><select class="status-sel s-${status.toLowerCase()}" onchange="onStatusChange('${key}',this,${e.mi},'${e.c.n.replace(/'/g,"\\'")}')">
+      <td><select class="status-sel s-${status.toLowerCase()}" onchange="onStatusChange('${key}',this,${e.mi},'${clientSafe}')">
         ${["Pendente","Realizada","Atrasada","Reagendada","Cancelada"].map(s=>`<option${s===status?" selected":""}>${s}</option>`).join("")}
       </select>${clearBtn}</td>
       <td>${dataRealHtml}</td>
       <td>${diasHtml}</td>
-      <td><input class="obs-input" type="text" value="${obs.replace(/"/g,'&quot;')}" placeholder="Observação..." onchange="onObsChange('${key}',this)" onblur="onObsChange('${key}',this)"></td>
+      <td><input class="obs-input" type="text" value="${obs.replace(/"/g,"&quot;")}" placeholder="Observação..." onchange="onObsChange('${key}',this)" onblur="onObsChange('${key}',this)"></td>
       <td><select class="dir-sel" onchange="onDirChange('${key}',this)">
         ${DIRS.map(d=>`<option${d===dir?" selected":""}>${d}</option>`).join("")}
       </select></td>
@@ -833,27 +837,14 @@ function getFullRow(key){
 function sanitizeDate(val){
   if(!val)return"";
   const s=String(val).trim();
-  // Já está no formato YYYY-MM-DD
   if(/^\d{4}-\d{2}-\d{2}$/.test(s))return s;
-  // Formato ISO com hora: 2026-05-12T03:00:00.000Z
-  if(s.includes("T")){
-    const d=new Date(s);
-    if(!isNaN(d)){
-      const y=d.getUTCFullYear();
-      const m=String(d.getUTCMonth()+1).padStart(2,"0");
-      const dd=String(d.getUTCDate()).padStart(2,"0");
-      return`${y}-${m}-${dd}`;
-    }
-  }
-  // Formato YYYY-MM (mês sem dia, ex: nova_data)
   if(/^\d{4}-\d{2}$/.test(s))return s;
-  // Qualquer outro — tenta parsear
-  const d=new Date(s);
-  if(!isNaN(d)){
-    const y=d.getUTCFullYear();
-    const m=String(d.getUTCMonth()+1).padStart(2,"0");
-    const dd=String(d.getUTCDate()).padStart(2,"0");
-    return`${y}-${m}-${dd}`;
+  const dt=new Date(s);
+  if(!isNaN(dt)){
+    const y=dt.getUTCFullYear();
+    const mo=String(dt.getUTCMonth()+1).padStart(2,"0");
+    const dd=String(dt.getUTCDate()).padStart(2,"0");
+    return`${y}-${mo}-${dd}`;
   }
   return s;
 }
@@ -945,6 +936,7 @@ function clearRecord(key){
   upsertRow(key,getFullRow(key));
   renderTable();updateAll();applyFilter();
 }
+function onDataRealChange(key,el){
   if(!DB[key])DB[key]={};
   DB[key].data_real=el.value;
   upsertRow(key,getFullRow(key));
