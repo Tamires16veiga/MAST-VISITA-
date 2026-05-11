@@ -257,7 +257,8 @@ tr.realizada-row{opacity:.6}
 /* Cronograma extras */
 .export-btn{font-size:12px;padding:5px 14px;border-radius:20px;border:1px solid rgba(255,255,255,.25);background:rgba(255,255,255,.1);color:rgba(255,255,255,.85);cursor:pointer;font-family:"DM Sans",sans-serif;transition:all .15s;display:inline-flex;align-items:center;gap:6px}
 .export-btn:hover{background:rgba(255,255,255,.22);border-color:rgba(255,255,255,.45)}
-.dias-atraso{font-size:11px;font-weight:700;color:var(--red);background:var(--red-lt);padding:2px 7px;border-radius:10px;white-space:nowrap}
+.clear-btn{font-size:10px;padding:2px 6px;border-radius:5px;border:1px solid var(--line);background:transparent;color:var(--ink3);cursor:pointer;font-family:"DM Sans",sans-serif;transition:all .15s;margin-left:4px;vertical-align:middle}
+.clear-btn:hover{background:var(--red-lt);color:var(--red);border-color:var(--red)}
 .obs-input{font-size:12px;padding:4px 8px;border-radius:6px;border:1px solid var(--line);background:transparent;font-family:"DM Sans",sans-serif;color:var(--ink2);outline:none;width:120px;transition:border-color .15s}
 .obs-input:focus{border-color:var(--blue)}
 .obs-input::placeholder{color:var(--ink3)}
@@ -587,8 +588,8 @@ async function loadAll(){
           dir: r.dir||"A definir",
           motivo: r.motivo||"",
           detalhe: r.detalhe||"",
-          nova_data: r.nova_data||"",
-          data_real: r.data_real||"",
+          nova_data: sanitizeDate(r.nova_data),
+          data_real: sanitizeDate(r.data_real),
           obs: r.obs||""
         };
         // Atualiza localStorage com dados do servidor
@@ -648,8 +649,8 @@ async function pollUpdates(){
             dir: r.dir||"A definir",
             motivo: r.motivo||"",
             detalhe: r.detalhe||"",
-            nova_data: r.nova_data||"",
-            data_real: r.data_real||"",
+            nova_data: sanitizeDate(r.nova_data),
+            data_real: sanitizeDate(r.data_real),
             obs: r.obs||""
           };
           try{localStorage.setItem("mast_"+r.chave, JSON.stringify(DB[r.chave]));}catch(e){}
@@ -766,15 +767,28 @@ function renderTable(){
       html+=`<tr class="m-sep" data-q="${mo.q}" data-mi="${e.mi}"><td colspan="10"><span class="m-lbl">${monthIcon}${mo.lbl}</span><span class="m-stats"> ${mReal}/${mEntries.length} realizada${mEntries.length!==1?"s":""}${mAtras>0?` · <b style="color:var(--red)">${mAtras} atrasada${mAtras!==1?"s":""}</b>`:""}${mPend>0&&!isPast?` · ${mPend} pendente${mPend!==1?"s":""}`:""}</span></td></tr>`;
     }
     const rowCls=status==="Atrasada"?"atrasada-row":status==="Reagendada"?"reagendada-row":status==="Realizada"?"realizada-row":"";
-    const novaData=DB[key]?.nova_data?` · nova: ${DB[key].nova_data}`:"";
+    const rawNova=DB[key]?.nova_data||"";
+    let novaDataFmt="";
+    if(rawNova){
+      // Pode ser YYYY-MM ou YYYY-MM-DD
+      const parts=rawNova.split("-");
+      if(parts.length>=2){
+        const mNames=["","Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+        novaDataFmt=` · nova: ${mNames[+parts[1]]||parts[1]}/${parts[0].slice(2)}`;
+      }
+    }
+    const novaData=novaDataFmt;
     // Dias em atraso
     let diasHtml="";
     if(status==="Atrasada"){
       const now=new Date();
       const endOfMonth=new Date(mo.y,mo.m,0);
       const dias=Math.floor((now-endOfMonth)/(1000*60*60*24));
-      diasHtml=`<span class="dias-atraso">${dias}d</span>`;
+      if(dias>0)diasHtml=`<span class="dias-atraso">${dias}d</span>`;
     }
+    // Botão limpar — aparece se tem qualquer dado salvo além do padrão
+    const hasData=DB[key]&&(DB[key].status&&DB[key].status!=="Pendente"||DB[key].dir&&DB[key].dir!=="A definir"||DB[key].motivo||DB[key].data_real||DB[key].obs);
+    const clearBtn=hasData?`<button class="clear-btn" data-clearkey="${key}" title="Limpar todos os dados deste registro">✕ limpar</button>`:""`;
     // Data real de realização — botão que abre calendário popup
     const dataReal=DB[key]?.data_real||"";
     let dataRealFmt="";
@@ -792,7 +806,7 @@ function renderTable(){
       <td style="font-family:'DM Mono',monospace;font-size:12px">${mo.lbl}${novaData}</td>
       <td><select class="status-sel s-${status.toLowerCase()}" onchange="onStatusChange('${key}',this,${e.mi},'${e.c.n.replace(/'/g,"\\'")}')">
         ${["Pendente","Realizada","Atrasada","Reagendada","Cancelada"].map(s=>`<option${s===status?" selected":""}>${s}</option>`).join("")}
-      </select></td>
+      </select>${clearBtn}</td>
       <td>${dataRealHtml}</td>
       <td>${diasHtml}</td>
       <td><input class="obs-input" type="text" value="${obs.replace(/"/g,'&quot;')}" placeholder="Observação..." onchange="onObsChange('${key}',this)" onblur="onObsChange('${key}',this)"></td>
@@ -815,7 +829,34 @@ function getFullRow(key){
     obs:DB[key]?.obs||""
   };
 }
-// ── CALENDÁRIO POPUP ────────────────────────────────────────────────────────
+// ── SANITIZA DATAS vindas do Sheets (podem vir como ISO, Date obj ou YYYY-MM-DD) ──
+function sanitizeDate(val){
+  if(!val)return"";
+  const s=String(val).trim();
+  // Já está no formato YYYY-MM-DD
+  if(/^\d{4}-\d{2}-\d{2}$/.test(s))return s;
+  // Formato ISO com hora: 2026-05-12T03:00:00.000Z
+  if(s.includes("T")){
+    const d=new Date(s);
+    if(!isNaN(d)){
+      const y=d.getUTCFullYear();
+      const m=String(d.getUTCMonth()+1).padStart(2,"0");
+      const dd=String(d.getUTCDate()).padStart(2,"0");
+      return`${y}-${m}-${dd}`;
+    }
+  }
+  // Formato YYYY-MM (mês sem dia, ex: nova_data)
+  if(/^\d{4}-\d{2}$/.test(s))return s;
+  // Qualquer outro — tenta parsear
+  const d=new Date(s);
+  if(!isNaN(d)){
+    const y=d.getUTCFullYear();
+    const m=String(d.getUTCMonth()+1).padStart(2,"0");
+    const dd=String(d.getUTCDate()).padStart(2,"0");
+    return`${y}-${m}-${dd}`;
+  }
+  return s;
+}
 let calKey=null,calBtn=null,calYear=0,calMonth=0;
 const MONTHS_PT=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
 const DAYS_PT=["Dom","Seg","Ter","Qua","Qui","Sex","Sáb"];
@@ -899,8 +940,11 @@ function pickDate(val){
   }
   closeCal();
 }
-function onDataRealChange(key,el){
-  // mantido por compatibilidade mas não usado mais
+function clearRecord(key){
+  DB[key]={status:"Pendente",dir:"A definir",motivo:"",detalhe:"",nova_data:"",data_real:"",obs:""};
+  upsertRow(key,getFullRow(key));
+  renderTable();updateAll();applyFilter();
+}
   if(!DB[key])DB[key]={};
   DB[key].data_real=el.value;
   upsertRow(key,getFullRow(key));
@@ -1252,6 +1296,11 @@ async function init(){
   document.getElementById("tableBody").addEventListener("click",function(e){
     const btn=e.target.closest(".data-real-btn");
     if(btn&&btn.dataset.key)openCal(btn.dataset.key,btn);
+    const clr=e.target.closest(".clear-btn");
+    if(clr&&clr.dataset.clearkey){
+      const k=clr.dataset.clearkey;
+      if(confirm("Limpar todos os dados deste registro?"))clearRecord(k);
+    }
   });
   // Polling a cada 3 segundos para sincronizar entre usuários
   setInterval(pollUpdates,3000);
