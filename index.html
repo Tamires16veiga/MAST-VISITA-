@@ -465,8 +465,18 @@ async function pollUpdates(){
     const hash=JSON.stringify(rows);
     if(hash!==lastHash){
       lastHash=hash;
-      DB={};
-      (rows||[]).forEach(r=>{DB[r.chave]={status:r.status,dir:r.dir,motivo:r.motivo,detalhe:r.detalhe,nova_data:r.nova_data};});
+      // Atualiza só os registros recebidos, sem apagar o DB local
+      (rows||[]).forEach(r=>{
+        if(r.chave){
+          DB[r.chave]={
+            status:r.status||DB[r.chave]?.status||"Pendente",
+            dir:r.dir||DB[r.chave]?.dir||"A definir",
+            motivo:r.motivo||DB[r.chave]?.motivo||"",
+            detalhe:r.detalhe||DB[r.chave]?.detalhe||"",
+            nova_data:r.nova_data||DB[r.chave]?.nova_data||""
+          };
+        }
+      });
       // Atualiza apenas as linhas existentes sem rerenderizar a tabela inteira
       document.querySelectorAll("tbody tr[data-key]").forEach(row=>{
         const key=row.dataset.key;
