@@ -353,8 +353,7 @@ tr.realizada-row{opacity:.6}
 </div>
 
 <script>
-const SUPABASE_URL = "https://hpfnxrqkuiuhqeceypag.supabase.co";
-const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImhwZm54cnFrdWl1aHFlY2V5cGFnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzc4NTI0NDIsImV4cCI6MjA5MzQyODQ0Mn0.LdyZpBr9Rj9NBz-Lu2KTYyrWna7BYE8Ceqk0HY35EUo";
+const SHEETS_URL = "https://script.google.com/macros/s/AKfycbzhNgkUEDFwRkYCUf1osQ3ovYbTqOraoCHooEWdByzy4OcYB8245fEp-zCARUNqQy1WZA/exec";
 
 const CLIENTS=[
   {n:"ADESTE",t:"PJ",r:"Angela",f:"Trimestral"},
@@ -412,22 +411,25 @@ let DB={};
 let pendingKey=null, pendingSel=null, pendingMi=null;
 let activeFilter="all";
 
-// ── SUPABASE API ─────────────────────────────────────────────────────────────
+// ── GOOGLE SHEETS API ────────────────────────────────────────────────────────
 async function dbFetch(path,opts={}){
-  const r=await fetch(SUPABASE_URL+"/rest/v1/"+path,{
-    headers:{"apikey":SUPABASE_KEY,"Authorization":"Bearer "+SUPABASE_KEY,
-              "Content-Type":"application/json","Prefer":"return=representation",...(opts.headers||{})},
-    ...opts
-  });
+  if(opts.method==="DELETE")return null;
+  if(opts.method==="POST"){
+    const data=JSON.parse(opts.body);
+    const r=await fetch(SHEETS_URL,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify(data)});
+    if(!r.ok)throw new Error(await r.text());
+    return r.json();
+  }
+  const r=await fetch(SHEETS_URL);
   if(!r.ok)throw new Error(await r.text());
-  return r.status===204?null:r.json();
+  return r.json();
 }
 
 async function loadAll(){
   try{
-    const rows=await dbFetch("visitas?select=*");
+    const rows=await dbFetch("get");
     DB={};
-    (rows||[]).forEach(r=>{DB[r.chave]={status:r.status,dir:r.dir,motivo:r.motivo,detalhe:r.detalhe,nova_data:r.nova_data};});
+    (rows||[]).forEach(r=>{if(r.chave)DB[r.chave]={status:r.status||"Pendente",dir:r.dir||"A definir",motivo:r.motivo||"",detalhe:r.detalhe||"",nova_data:r.nova_data||""};});
     document.getElementById("syncDot").classList.remove("off");
   }catch(e){
     console.error(e);
@@ -439,10 +441,8 @@ let pausePoll=false;
 async function upsertRow(key,data){
   pausePoll=true;
   try{
-    // UPSERT: cria ou atualiza em uma única operação
-    await dbFetch("visitas",{
+    await dbFetch("post",{
       method:"POST",
-      headers:{"Prefer":"resolution=merge-duplicates"},
       body:JSON.stringify({chave:key,...data})
     });
     // Atualiza DB local imediatamente
@@ -461,7 +461,7 @@ let lastHash="";
 async function pollUpdates(){
   if(pausePoll)return;
   try{
-    const rows=await dbFetch("visitas?select=*");
+    const rows=await dbFetch("get");
     const hash=JSON.stringify(rows);
     if(hash!==lastHash){
       lastHash=hash;
