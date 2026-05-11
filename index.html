@@ -426,10 +426,31 @@ async function dbFetch(path,opts={}){
 }
 
 async function loadAll(){
+  // Primeiro carrega localStorage como cache imediato
+  try{
+    const keys=Object.keys(localStorage).filter(k=>k.startsWith("mast_"));
+    keys.forEach(k=>{
+      const key=k.replace("mast_","");
+      try{DB[key]=JSON.parse(localStorage.getItem(k));}catch(e){}
+    });
+  }catch(e){}
+  // Depois busca do Sheets e mescla
   try{
     const rows=await dbFetch("get");
-    DB={};
-    (rows||[]).forEach(r=>{if(r.chave)DB[r.chave]={status:r.status||"Pendente",dir:r.dir||"A definir",motivo:r.motivo||"",detalhe:r.detalhe||"",nova_data:r.nova_data||""};});
+    (rows||[]).forEach(r=>{
+      if(r.chave){
+        // Sheets tem prioridade sobre localStorage para status não-padrão
+        const sheetsStatus = r.status && r.status!=="Pendente" ? r.status : null;
+        const sheetsDir = r.dir && r.dir!=="A definir" ? r.dir : null;
+        DB[r.chave]={
+          status: sheetsStatus || DB[r.chave]?.status || "Pendente",
+          dir: sheetsDir || DB[r.chave]?.dir || "A definir",
+          motivo: r.motivo || DB[r.chave]?.motivo || "",
+          detalhe: r.detalhe || DB[r.chave]?.detalhe || "",
+          nova_data: r.nova_data || DB[r.chave]?.nova_data || ""
+        };
+      }
+    });
     document.getElementById("syncDot").classList.remove("off");
   }catch(e){
     console.error(e);
@@ -448,6 +469,8 @@ async function upsertRow(key,data){
     // Atualiza DB local imediatamente
     if(!DB[key])DB[key]={};
     Object.assign(DB[key],data);
+    // Salva backup no localStorage
+    try{localStorage.setItem("mast_"+key, JSON.stringify(DB[key]));}catch(e){}
     lastHash="";
     showToast();
   }catch(e){
@@ -468,12 +491,14 @@ async function pollUpdates(){
       // Atualiza só os registros recebidos, sem apagar o DB local
       (rows||[]).forEach(r=>{
         if(r.chave){
+          const sheetsStatus = r.status && r.status!=="Pendente" ? r.status : null;
+          const sheetsDir = r.dir && r.dir!=="A definir" ? r.dir : null;
           DB[r.chave]={
-            status:r.status||DB[r.chave]?.status||"Pendente",
-            dir:r.dir||DB[r.chave]?.dir||"A definir",
-            motivo:r.motivo||DB[r.chave]?.motivo||"",
-            detalhe:r.detalhe||DB[r.chave]?.detalhe||"",
-            nova_data:r.nova_data||DB[r.chave]?.nova_data||""
+            status: sheetsStatus || DB[r.chave]?.status || "Pendente",
+            dir: sheetsDir || DB[r.chave]?.dir || "A definir",
+            motivo: r.motivo || DB[r.chave]?.motivo || "",
+            detalhe: r.detalhe || DB[r.chave]?.detalhe || "",
+            nova_data: r.nova_data || DB[r.chave]?.nova_data || ""
           };
         }
       });
